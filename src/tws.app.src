@@ -1,0 +1,12 @@
+{application, tws,
+ [
+  {description, "IB TWS API client"},
+  {vsn, git},
+  {registered, [tws]},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { tws_sup, []}},
+  {env, []}
+ ]}.
