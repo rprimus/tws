@@ -1,0 +1,1069 @@
+head	1.15;
+access;
+symbols;
+locks
+	micro:1.15; strict;
+comment	@# @;
+
+
+1.15
+date	2010.05.16.13.33.57;	author micro;	state Exp;
+branches;
+next	1.14;
+
+1.14
+date	2010.05.15.14.14.13;	author micro;	state Exp;
+branches;
+next	1.13;
+
+1.13
+date	2010.05.13.07.31.00;	author micro;	state Exp;
+branches;
+next	1.12;
+
+1.12
+date	2010.05.13.06.32.12;	author micro;	state Exp;
+branches;
+next	1.11;
+
+1.11
+date	2010.05.12.13.46.32;	author micro;	state Exp;
+branches;
+next	1.10;
+
+1.10
+date	2010.05.12.12.23.48;	author micro;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	2010.05.12.11.27.34;	author micro;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2010.05.12.11.01.35;	author micro;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2010.05.11.13.06.31;	author micro;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2010.05.10.16.14.05;	author micro;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2010.05.10.13.06.16;	author micro;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2010.05.10.09.19.54;	author micro;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2010.04.28.09.53.30;	author micro;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2010.04.28.06.02.58;	author micro;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2010.04.27.18.23.47;	author micro;	state Exp;
+branches;
+next	;
+
+
+desc
+@First check-in
+-primus
+@
+
+
+1.15
+log
+@dict added
+-primus
+@
+text
+@%%% $Id: dedup.erl,v 1.9 2010/05/06 13:00:17 micro Exp $
+%%% Fri April 27 18:23:47 GMT 2010 -primus  µ
+%%% File:     tws.erl
+%%  @@author   R. Primus  <rprimus@@gmail.com>
+%%    [http://www.soi.city.ac.uk/~bm119]
+%%  @@doc      toy program to connect to IB TWSs API and display data.
+%%  Ultimate goal is to create .scid files for use with SierraChart
+
+%% @@reference <a href="http://oreilly.com/catalog/9780596518189/">Erlang Programming</a>,
+%%  <em> Francesco Cesarini and Simon Thompson</em>,
+%%  O'Reilly, 2009.
+%% @@reference <a href="http://pragprog.com/titles/jaerlang/programming-erlang"> Programming Erlang</a>
+%%  <em> Joe Armstrong</em>,
+%%  Pragmatic Bookshelf, 2007.
+%% @@copyright (c) © 2010, R Primus. All Rights Reserved
+%%
+
+%% @@headerfile "tws.hrl"
+
+%% Type definitions and comments for edoc.
+
+%% Created:  Wed Apr 27 18:23:47 2010 by R. Primus  <rprimus@@gmail.com>
+%%
+
+
+%%% THE SOFTWARE IS PROVIDED "AS-IS" AND WITHOUT WARRANTY OF ANY KIND, EXPRESS,
+%%% IMPLIED OR OTHERWISE, INCLUDING WITHOUT LIMITATION, ANY WARRANTY OF
+%%% MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+
+%%% IN NO EVENT SHALL R Primus BE LIABLE FOR ANY SPECIAL, INCIDENTAL, INDIRECT OR
+%%% CONSEQUENTIAL DAMAGES OF ANY KIND, OR ANY DAMAGES WHATSOEVER RESULTING FROM
+%%% LOSS OF USE, DATA OR PROFITS, WHETHER OR NOT ADVISED OF THE POSSIBILITY OF
+%%% DAMAGE, AND ON ANY THEORY OF LIABILITY,  ARISING OUT OF OR IN CONNECTION WITH
+%%% THE USE OR PERFORMANCE OF THIS SOFTWARE.
+%%% See the file COPYING
+%%%
+
+-module(tws).
+-export([start/0, start/2, stop/0]).
+-export([connect/1, set_loglevel/1, req_mktdata/2, cancel_mktdata/1]).
+-export([req_real_time_bars/2, cancel_real_time_bars/1, req_contract_data/2, req_contract_data/4, set_contract/0, set_contract/3]).
+-export([loop/1, parse_data/1]).
+-export([asciz/1]).
+-export([get_contracts/0, get_contracts/1]).
+-export([start_real_time/2]).
+
+-vsn("$Id: tws.erl,v 1.9 2010/05/12 11:27:34 micro Exp $").
+-author("R, Primus").
+-copyright("Copyright (c) 2010, R Primus. All Rights Reserved").
+-doc("").
+-purpose("").
+
+-include("tws.hrl").
+
+-define(TCP_OPTIONS, [inet, {packet, 0}, binary]).
+-define(TWS_HOST, "localhost").
+-define(CONTRACTS_FILE, "contracts.dat").
+-define(FL(X), list_to_float(X)).
+-define(TIME_FMT, "~2..0B:~2..0B:~2..0B").
+-define(TIME(H,M,S), H,M,S).
+
+start() ->
+  start(?TWS_HOST, 666).
+start(Host, ClientID) ->
+  {ok, Socket} = gen_tcp:connect(Host, ?PORT, ?TCP_OPTIONS),
+  Pid = spawn(?MODULE,loop,[Socket]),
+  register(?MODULE, Pid),
+  gen_tcp:controlling_process(Socket, Pid),
+  connect(ClientID).
+
+connect(ClientID) ->
+  call(?CLIENT_VERSION),
+  call(ClientID),
+  ok.
+
+set_loglevel(Loglevel) ->
+  call(?SET_SERVER_LOGLEVEL),
+  call(1),
+  call(Loglevel),
+  ok.
+
+get_contracts() ->
+  get_contracts(?CONTRACTS_FILE).
+get_contracts(File) ->
+  case file:consult(File) of
+    {ok, Contracts} ->
+      create_dict(Contracts);
+    Error -> {File, Error}
+  end.
+
+create_dict(Contracts) ->
+  Db = dict:new(),
+  create_dict(Contracts, Db).
+create_dict([], Db) -> Db;
+
+create_dict([H|T], Db) ->
+  Db1 = dict:store((H#contract_details.summary)#contract.symbol, H, Db),
+  create_dict(T, Db1).
+
+start_real_time([], _) -> ok;
+start_real_time([H|T], Acc) ->
+  spawn(tws, req_real_time_bars, [Acc, H]),
+  start_real_time(T, Acc+1).
+
+req_contract_data(TickerID, Contract) ->
+  call(?REQ_CONTRACT_DATA),
+  call(6),
+  call(TickerID),
+  call("0"),
+  call(Contract#contract.symbol),
+  call(Contract#contract.sectype),
+  call(Contract#contract.expiry),
+  call(Contract#contract.strike),
+  call(Contract#contract.right),
+  call(Contract#contract.multiplier),
+  call(Contract#contract.exchange),
+  call(Contract#contract.currency),
+  call(""),
+  call(0),
+  call(""),
+  call(""),    %snapshot (false)
+  ok.
+req_contract_data(TickerID, Symbol, Exchange, Expiry) ->
+    req_contract_data(TickerID, set_contract(Symbol, Exchange, Expiry)).
+
+req_mktdata(TickerID, Contract) ->
+  call(?REQ_MKT_DATA),
+  call(8),
+  call(TickerID),
+  call(Contract#contract.symbol),
+  call(Contract#contract.sectype),
+  call(Contract#contract.expiry),
+  call(Contract#contract.strike),
+  call(Contract#contract.right),
+  call(Contract#contract.multiplier),
+  call(Contract#contract.exchange),
+  call(""),
+  call(Contract#contract.currency),
+  call(""),
+  call(0),
+  call(""),
+  call(0),    %snapshot (false)
+  ok.
+
+cancel_mktdata(TickerID) ->
+  call(?CANCEL_MKT_DATA),
+  call(2),
+  call(TickerID),
+  ok.
+
+req_real_time_bars(TickerID, Contract) ->
+  call(?REQ_REAL_TIME_BARS),
+  call(1),
+  call(TickerID),
+  call(Contract#contract.symbol),
+  call(Contract#contract.sectype),
+  call(Contract#contract.expiry),
+  call(Contract#contract.strike),
+  call(Contract#contract.right),
+  call(Contract#contract.multiplier),
+  call(Contract#contract.exchange),
+  call(""),
+  call(Contract#contract.currency),
+  call(""),
+  call(5),
+  call("TRADES"),
+  call(0),    %use RTH
+  ok.
+
+cancel_real_time_bars(TickerID) ->
+  call(?CANCEL_REAL_TIME_BARS),
+  call(1),
+  call(TickerID),
+  ok.
+
+set_contract() ->
+  #contract{}.
+set_contract(Symbol, Expiry, Exchange) ->
+  #contract{symbol=Symbol, expiry=Expiry, exchange=Exchange}.
+
+
+stop() ->
+    call(stop),
+    ok.
+
+call(Command) ->
+    ?MODULE ! {send, Command}.
+
+loop(Socket) ->
+  %process_flag(trap_exit, true),
+  receive
+    {send, Command} ->
+      case Command of
+        stop ->
+          gen_tcp:close(Socket),
+          {Socket, closed};
+        _ ->
+          gen_tcp:send(Socket, asciz(Command)),
+          loop(Socket)
+      end;
+    {tcp, Socket, Bin}  ->
+      spawn(tws, parse_data, [string:tokens(binary_to_list(Bin), "\0")]),
+      loop(Socket);
+    {tcp_closed, Socket} ->
+      gen_tcp:close(Socket)
+    %{'EXIT', Pid, Reason} ->
+    %    {exit, Pid, Reason}
+  end.
+parse_data([]) -> ok;
+
+parse_data(L) ->
+  [MsgID|Rest] = L,
+  Size=length(L),
+  case list_to_integer(MsgID) of
+    ?SERVER_VERSION ->
+      [SerDateTime| Data] = Rest,
+      io:format("Connected at: ~p~n", [SerDateTime]),
+      parse_data(Data);
+    ?NEXT_VALID_ID ->
+      [_Ver, ID| Data] = Rest,
+      io:format("Next OrderID: ~p~n", [ID]),
+      parse_data(Data);
+    ?OPEN_ORDER_END ->
+      [_Ver| Data] = Rest,
+      parse_data(Data);
+    ?CONTRACT_DATA_END ->
+      [_Ver, _TickerID| Data] = Rest,
+      parse_data(Data);
+    ?TICK_PRICE ->
+      [_Ver, TickerID, TickTypeInt, TickPrice, TickSize, _CanAutoExecute|Data] = Rest,
+      io:format("tick_price: ticker: ~p ", [TickerID]),
+      io:format("type: ~p ", [get_tick_type(list_to_integer(TickTypeInt))]),
+      io:format("price: ~p , size: ~p~n", [TickPrice, TickSize]),
+      parse_data(Data);
+    ?TICK_SIZE ->
+      [_Ver, TickerID, TickTypeInt, TickSize |Data] = Rest,
+      io:format("tick_size: ticker: ~p ", [TickerID]),
+      io:format("type: ~p ", [get_tick_type(list_to_integer(TickTypeInt))]),
+      io:format("size: ~p~n", [TickSize]),
+      parse_data(Data);
+    ?TICK_GENERIC ->
+      [_Ver, TickerID, TickTypeInt, Value |Data] = Rest,
+      io:format("tick_generic: ticker: ~p ", [TickerID]),
+      io:format("type: ~p ", [get_tick_type(list_to_integer(TickTypeInt))]),
+      io:format("Value: ~p~n", [Value]),
+      parse_data(Data);
+    ?TICK_STRING ->
+      [_Ver, TickerID, TickTypeInt, Value |Data] = Rest,
+      io:format("tick_string: ticker: ~p ", [TickerID]),
+      io:format("type: ~p ", [get_tick_type(list_to_integer(TickTypeInt))]),
+      io:format("String: ~p~n", [Value]),
+      parse_data(Data);
+    ?ERR_MSG ->
+      [_Ver, Id, ErrorCode, ErrorMsg| Data] = Rest,
+      io:format("error_msg: Id: ~p: Code: ~p Msg: ~p~n", [Id, ErrorCode, ErrorMsg]),
+      parse_data(Data);
+    ?CONTRACT_DATA ->
+      %io:format("contract_data [~p] ~p~n", [Size, Rest]),
+      [
+      _Ver, _ReqId, Symbol, SecType, Expiry, Strike, Exchange, Currency, LocalSymbol, MarketName, TradingClass, ConId, MinTick, Multiplier, OrderTypes, ValidExchanges, PriceMagnifier, UnderConId, LongName, ContractMonth, TimeZoneId, TradingHours, LiquidHours| Data] = Rest,
+      C = #contract_details{
+          summary = #contract{symbol=Symbol,
+            sectype=SecType,
+            expiry=Expiry,
+            strike=Strike,
+            exchange=Exchange,
+            currency=Currency,
+            local_symbol=LocalSymbol},
+        marketName=MarketName,
+        tradingClass=TradingClass,
+        conId=ConId,
+        minTick=MinTick,
+        multiplier=Multiplier,
+        orderTypes=OrderTypes,
+        validExchanges=ValidExchanges,
+        priceMagnifier=PriceMagnifier,
+        underConId=UnderConId,
+        longName=LongName,
+        contractMonth=ContractMonth,
+        timeZoneId=TimeZoneId,
+        tradingHours=TradingHours,
+        liquidHours=LiquidHours},
+      case file:open(?CONTRACTS_FILE, [append]) of
+        {ok, S} ->
+          io:format(S, "~p.~n", [C]),
+          file:close(S);
+        Error -> {?CONTRACTS_FILE, Error}
+      end,
+      io:format("~p~n", [C]),
+      parse_data(Data);
+    ?NEWS_BULLETINS ->
+      io:format("news_bulletins [~p] ~p~n", [Size, Rest]);
+    ?HISTORICAL_DATA ->
+      io:format("historical_data [~p] ~p~n", [Size, Rest]);
+    ?CURRENT_TIME ->
+      io:format("current_time [~p] ~p~n", [Size, Rest]);
+    ?REAL_TIME_BARS ->
+      [_Ver, ReqId, Time, Open, High, Low, Close, Volume, Average, Count| Data] = Rest,
+      {_, {H, M, S}} = calendar:gregorian_seconds_to_datetime(list_to_integer(Time)),
+      io:format("ticker: ~s; " ++ ?TIME_FMT ++  " ~.3f, ~.3f, ~.3f, ~.3f, ~4s, [~.3f, ~4s] ~8.3f~n",
+          [ReqId, ?TIME(H,M,S), ?FL(Open), ?FL(High), ?FL(Low), ?FL(Close),
+            Volume, ?FL(Average), Count, vol_per_trade(Volume, Count)]),
+      parse_data(Data);
+    _ ->
+      io:format("~p~n", [L])
+  end.
+vol_per_trade(V, C) ->
+  case list_to_integer(C) of
+    0 ->  0;
+    _ -> list_to_integer(V)/list_to_integer(C)
+  end.
+get_tick_type(T) ->
+  {T, Type} = lists:keyfind(T, 1, ?TICK_TYPE),
+  Type.
+asciz(V) ->
+  case is_integer(V) of
+    true ->
+      integer_to_list(V) ++ "\0";
+    _ -> V ++ "\0"
+  end.
+
+%% vim: set et ts=2 sw=2 ai invlist si cul nu:
+@
+
+
+1.14
+log
+@a process spawned whenever data is received.
+need to add dict for contracts
+-primus
+@
+text
+@d2 1
+a2 1
+%%% Fri April 27 18:23:47 GMT 2010 -primus
+d15 1
+a15 1
+%% @@copyright (c) 2010, R Primus. All Rights Reserved
+a63 1
+
+a70 1
+
+d75 1
+a75 1
+  
+a83 1
+
+d87 1
+a87 1
+      lists:foreach(fun(X) -> io:format("contracts read: ~p~n", [X]) end, Contracts);
+d91 4
+d96 4
+a122 1
+  
+a125 1
+
+d150 1
+a150 1
+    
+a177 1
+
+a188 1
+
+d205 3
+a207 3
+      gen_tcp:close(Socket);
+    {'EXIT', Pid, Reason} ->
+        {exit, Pid, Reason}
+a208 2
+
+
+a306 1
+
+a311 2
+
+
+a314 1
+
+d316 5
+a320 5
+    case is_integer(V) of
+        true ->
+            integer_to_list(V) ++ "\0";
+        _ -> V ++ "\0"
+    end.
+@
+
+
+1.13
+log
+@io:format volume and TickerID as strings (removeing '"').
+all req_real_time_bar messages now same length. (volume and count) prints.
+-primus
+@
+text
+@d1 7
+a7 3
+%% $Id: tws.erl,v 1.9 2010/05/12 11:27:34 micro Exp $
+%% Fri Mar  5 18:31:35 GMT 2010 -primus
+%% Erlang code template - to be used for all modules
+d9 29
+d42 1
+a42 1
+-export([loop/1]).
+d44 3
+d49 1
+a49 1
+-copyright("").
+d56 2
+a57 1
+-define(TWS_HOST, "laptop").
+d66 5
+a70 5
+    {ok, Socket} = gen_tcp:connect(Host, ?PORT, ?TCP_OPTIONS),
+    Pid = spawn(?MODULE,loop,[Socket]),
+    register(?MODULE, Pid),
+    gen_tcp:controlling_process(Socket, Pid),
+    connect(ClientID).
+d74 3
+a76 2
+    call(?CLIENT_VERSION),
+    call(ClientID).
+d79 4
+a82 3
+    call(?SET_SERVER_LOGLEVEL),
+    call(1),
+    call(Loglevel).
+d84 16
+d101 17
+a117 16
+    call(?REQ_CONTRACT_DATA),
+    call(6),
+    call(TickerID),
+    call("0"),
+    call(Contract#contract.symbol),
+    call(Contract#contract.sectype),
+    call(Contract#contract.expiry),
+    call(Contract#contract.strike),
+    call(Contract#contract.right),
+    call(Contract#contract.multiplier),
+    call(Contract#contract.exchange),
+    call(Contract#contract.currency),
+    call(""),
+    call(0),
+    call(""),
+    call("").    %snapshot (false)
+d124 17
+a140 16
+    call(?REQ_MKT_DATA),
+    call(8),
+    call(TickerID),
+    call(Contract#contract.symbol),
+    call(Contract#contract.sectype),
+    call(Contract#contract.expiry),
+    call(Contract#contract.strike),
+    call(Contract#contract.right),
+    call(Contract#contract.multiplier),
+    call(Contract#contract.exchange),
+    call(""),
+    call(Contract#contract.currency),
+    call(""),
+    call(0),
+    call(""),
+    call(0).    %snapshot (false)
+d145 2
+a146 1
+  call(TickerID).
+d164 2
+a165 1
+  call(0).    %use RTH
+d170 2
+a171 1
+  call(TickerID).
+d189 19
+a207 16
+    receive
+        {send, Command} ->
+            case Command of
+                stop ->
+                    gen_tcp:close(Socket),
+                    {Socket, closed};
+                _ ->
+                    gen_tcp:send(Socket, asciz(Command)),
+                    loop(Socket)
+            end;
+        {tcp, Socket, Bin}  ->
+            parse_data(string:tokens(binary_to_list(Bin), "\0")),
+            loop(Socket);
+        {tcp_closed, Socket} ->
+            gen_tcp:close(Socket)
+    end.
+d259 33
+a291 1
+      io:format("contract_data [~p] ~p~n", [Size, L]);
+d293 1
+a293 1
+      io:format("news_bulletins [~p] ~p~n", [Size, L]);
+d295 1
+a295 1
+      io:format("historical_data [~p] ~p~n", [Size, L]);
+d297 1
+a297 1
+      io:format("current_time [~p] ~p~n", [Size, L]);
+d300 4
+a303 4
+      {_, {H, M, S}} =
+      calendar:gregorian_seconds_to_datetime(list_to_integer(Time)),
+      io:format("ticker: ~s; " ++ ?TIME_FMT ++  " ~.3f, ~.3f, ~.3f, ~.3f, ~4s, [~.3f, ~4s]~n",
+          [ReqId, ?TIME(H,M,S), ?FL(Open), ?FL(High), ?FL(Low), ?FL(Close), Volume, ?FL(Average), Count]),
+d308 7
+@
+
+
+1.12
+log
+@added in macros for TIME and TIME_FMT.
+-primus
+@
+text
+@d207 1
+a207 1
+      io:format("ticker: ~p; " ++ ?TIME_FMT ++  " ~.3f, ~.3f, ~.3f, ~.3f, ~p, [~.3f, ~p]~n",
+@
+
+
+1.11
+log
+@check-in
+not sure what was changed.
+-primus
+@
+text
+@d1 1
+a1 1
+%% $Id: tws.erl,v 1.10 2010/05/12 12:23:48 micro Exp $
+d11 1
+a11 1
+-vsn("$Id: tws.erl,v 1.10 2010/05/12 12:23:48 micro Exp $").
+d21 3
+d164 3
+d205 4
+a208 2
+        io:format("ticker: ~p; ~p: ~p, ~p, ~p, ~p, ~p, [~p, ~p]~n",
+          [ReqId, Time, Open, High, Low, Close, Volume, Average, Count]),
+@
+
+
+1.10
+log
+@added a working req_real_time_bars method
+-primus
+@
+text
+@d1 1
+a1 1
+%% $Id: tws.erl,v 1.9 2010/05/12 11:27:34 micro Exp $
+d11 1
+a11 1
+-vsn("$Id: tws.erl,v 1.9 2010/05/12 11:27:34 micro Exp $").
+@
+
+
+1.9
+log
+@added handling of NEXT_VALID_ID and OPEN_ORDER_END
+-primus
+@
+text
+@d1 1
+a1 1
+%% $Id: tws.erl,v 1.8 2010/05/12 11:01:35 micro Exp $
+d11 1
+a11 1
+-vsn("$Id: tws.erl,v 1.8 2010/05/12 11:01:35 micro Exp $").
+d198 4
+a201 1
+      io:format("real_time_bars [~p] ~p~n", [Size, L]);
+@
+
+
+1.8
+log
+@base working version.
+handles server response upon connect before sending clientID.
+-primus
+@
+text
+@d1 1
+a1 1
+%% $Id: tws.erl,v 1.7 2010/05/11 13:06:31 micro Exp $
+d11 1
+a11 1
+-vsn("$Id: tws.erl,v 1.7 2010/05/11 13:06:31 micro Exp $").
+d20 1
+a20 1
+-define(TWS_HOST, "localhost").
+d151 1
+a151 1
+      [SerDateTime, _Nine, _On1, _On2, _On3, _On4| Data] = Rest,
+d153 7
+@
+
+
+1.7
+log
+@another modification of parse data
+@
+text
+@d1 1
+a1 1
+%% $Id: tws.erl,v 1.6 2010/05/10 16:14:05 micro Exp $
+a5 1
+%% -import().
+d8 1
+a8 2
+-export([req_real_time_bars/2, cancel_real_time_bars/1, req_contract_data/2, req_contract_data/4,
+set_contract/3]).
+d11 1
+a11 2
+%% -compile(export_all).
+-vsn("$Id: tws.erl,v 1.6 2010/05/10 16:14:05 micro Exp $").
+d20 1
+d23 1
+a23 1
+  start("laptop", 666).
+d110 3
+a115 34
+%connect(Host, ClientID) ->
+%    %{ok, Socket} = gen_tcp:connect(Host, ?PORT, [inet, {packet, 0}, binary, {active, false}]),
+%    {ok, Socket} = gen_tcp:connect(Host, ?PORT, [inet, {packet, 0}, binary]),
+%    Pid = spawn(?MODULE,loop,[Socket]),
+%    register(?MODULE, Pid),
+%    gen_tcp:controlling_process(Socket, Pid),
+%    call(?CLIENT_VERSION),
+%    call(ClientID),
+%    timer:sleep(5000),
+%    call(?SET_SERVER_LOGLEVEL),
+%    call(1),
+%    call(5),
+%    timer:sleep(5000),
+%    call(?REQ_CURRENT_TIME),
+%    call(1),
+%    timer:sleep(5000).
+%    call(Pid, ?REQ_NEWS_BULLETINS),
+%    call(Pid, 1),
+%    call(Pid, 1),
+%    timer:sleep(5000),
+%    call(Pid, ?REQ_MKT_DATA),
+%    call(Pid, 6),
+%    call(Pid, 3),
+%    call(Pid, "CL"),
+%    call(Pid, "FUT"),
+%    call(Pid, "201006"),
+%    call(Pid, "0.0000000"),
+%    call(Pid, ""),
+%    call(Pid, ""),
+%    call(Pid, "NYMEX"),
+%    call(Pid, ""),
+%    call(Pid, "USD"),
+%    call(Pid, ""),
+%    call(Pid,"100,101,104,106,165,221,225").
+a116 13
+
+    %receive_data(Socket).
+    %{ok, Packet} = gen_tcp:recv(Socket, 0), % recv ServerVersion Date Time TimeZone
+
+    %parse_data(Packet),
+    %gen_tcp:send(Socket, ?asciz(ClientID)),      % send ClientID
+    %{ok, Packet1} = gen_tcp:recv(Socket, 0),
+    %parse_data(Packet1),
+    %gen_tcp:send(Socket, ?asciz(ClientID)),      % send ClientID
+    %inet:setopts(Socket, [{active,true}]),
+    %receive_data(Socket),
+    %gen_tcp:close(Socket).
+
+d137 1
+a137 1
+            parse_data(Bin),
+d144 48
+a191 14
+%receive_data(Socket) ->
+%    receive
+%        {tcp, Socket, Bin} ->
+%            parse_data(Bin),
+%            receive_data(Socket);
+%        {tcp_closed, Socket} ->
+%            ok
+%    end.
+%
+parse_data(Bin) ->
+  [H|T]  = string:tokens(binary_to_list(Bin), "\0"),
+  case string:to_integer(H) of
+    {?TICK_PRICE, _} ->
+      io:format("price: ~p~n", [T]);
+d193 1
+a193 2
+      io:format("~p~n", [Bin]),
+      io:format("~p~n", [string:to_integer(H)])
+d196 3
+@
+
+
+1.6
+log
+@check-in after some testing.
+-primus
+@
+text
+@d1 1
+a1 1
+%% $Id: tws.erl,v 1.5 2010/05/10 13:06:16 micro Exp $
+d9 1
+a9 1
+-export([req_real_time_bars/1, cancel_real_time_bars/1, req_contract_data/2, req_contract_data/4,
+d12 1
+d14 1
+a14 1
+-vsn("$Id: tws.erl,v 1.5 2010/05/10 13:06:16 micro Exp $").
+d89 1
+a89 1
+req_real_time_bars(TickerID) ->
+d93 7
+a99 4
+  call("CL"),
+  call("FUT"),
+  call("201006"),
+  call("0.0000000"),
+d101 1
+a102 4
+  call("NYMEX"),
+  call(""),
+  call("USD"),
+  call(""),
+d200 8
+a207 1
+  io:format("~p~n", [string:tokens(binary_to_list(Bin), "\0")]).
+@
+
+
+1.5
+log
+@implemented records for contracts
+-primus
+@
+text
+@d1 1
+a1 1
+%% $Id: tws.erl,v 1.4 2010/05/10 09:19:54 micro Exp $
+d13 1
+a13 1
+-vsn("$Id: tws.erl,v 1.4 2010/05/10 09:19:54 micro Exp $").
+d199 1
+a199 6
+    case Bin of
+      <<4, _Rest>> ->
+        io:format("ERROR received~n");
+      _ ->
+        io:format("~p~n", [string:tokens(binary_to_list(Bin), "\0")])
+    end.
+@
+
+
+1.4
+log
+@added req_contract_data
+-primus
+@
+text
+@d1 1
+a1 1
+%% $Id: tws.erl,v 1.3 2010/04/28 09:53:30 micro Exp $
+d7 4
+a10 3
+-export([start/1, stop/0]).
+-export([connect/1, set_loglevel/1, req_mktdata/1, cancel_mktdata/1]).
+-export([req_real_time_bars/1, cancel_real_time_bars/1, req_contract_data/3]).
+d13 1
+a13 1
+-vsn("$Id: tws.erl,v 1.3 2010/04/28 09:53:30 micro Exp $").
+d23 4
+a26 1
+start(Host) ->
+d30 2
+a31 1
+    gen_tcp:controlling_process(Socket, Pid).
+d43 1
+a43 1
+req_contract_data(TickerID, Symbol, Exchange) ->
+d48 8
+a55 5
+    %call(TickerID),
+    call(Symbol),
+    call("FUT"),
+    call("201006"),
+    call("0.0000000"),
+a56 4
+    call(""),
+    call(Exchange),
+    call("USD"),
+    call(""),
+a57 2
+    %call("100,101,104,106,162,165,221,225,233,236,256,258"),
+    %http://www.interactivebrokers.com/php/apiUsersGuide/apiguide/tables/generic_tick_types.htm#XREF_interoperability
+d60 3
+d64 2
+a65 1
+req_mktdata(TickerID) ->
+d69 7
+a75 4
+    call("CL"),
+    call("FUT"),
+    call("201006"),
+    call("0.0000000"),
+d77 1
+a78 4
+    call("NYMEX"),
+    call(""),
+    call("USD"),
+    call(""),
+a80 2
+    %call("100,101,104,106,162,165,221,225,233,236,256,258"),
+    %http://www.interactivebrokers.com/php/apiUsersGuide/apiguide/tables/generic_tick_types.htm#XREF_interoperability
+d89 16
+a104 16
+    call(?REQ_REAL_TIME_BARS),
+    call(1),
+    call(TickerID),
+    call("CL"),
+    call("FUT"),
+    call("201006"),
+    call("0.0000000"),
+    call(""),
+    call(""),
+    call("NYMEX"),
+    call(""),
+    call("USD"),
+    call(""),
+    call(5),
+    call("TRADES"),
+    call(0).    %use RTH
+d107 3
+a109 3
+    call(?CANCEL_REAL_TIME_BARS),
+    call(1),
+    call(TickerID).
+d111 3
+d199 6
+a204 2
+    io:format("~p~n", [string:tokens(binary_to_list(Bin), "\0")]).
+    %io:format("~p~n", [Bin]).
+@
+
+
+1.3
+log
+@added separate commands
+-primus
+@
+text
+@d1 1
+a1 1
+%% $Id: tws.erl,v 1.2 2010/04/28 06:02:58 micro Exp $
+d9 1
+d12 1
+a12 1
+-vsn("$Id: tws.erl,v 1.2 2010/04/28 06:02:58 micro Exp $").
+d20 2
+d23 1
+a23 1
+    {ok, Socket} = gen_tcp:connect(Host, ?PORT, [inet, {packet, 0}, binary]),
+d38 21
+d79 26
+a104 3
+  cancel_mktdata(TickerID) ->
+    call(?CANCEL_MKT_DATA),
+    call(2),
+a105 1
+    
+@
+
+
+1.2
+log
+@removed a line.
+-primus
+@
+text
+@d1 1
+a1 1
+%% $Id: tws.erl,v 1.1 2010/04/27 18:23:47 micro Exp $
+d7 2
+a8 1
+-export([connect/2, call/2]).
+d11 1
+a11 1
+-vsn("$Id: tws.erl,v 1.1 2010/04/27 18:23:47 micro Exp $").
+d19 1
+a19 4
+
+
+connect(Host, ClientID) ->
+    %{ok, Socket} = gen_tcp:connect(Host, ?PORT, [inet, {packet, 0}, binary, {active, false}]),
+d22 2
+a23 26
+    gen_tcp:controlling_process(Socket, Pid),
+    call(Pid, ?CLIENT_VERSION),
+    call(Pid, ClientID),
+    timer:sleep(5000),
+    call(Pid, ?SET_SERVER_LOGLEVEL),
+    call(Pid, 1),
+    call(Pid, 5),
+    timer:sleep(5000),
+    call(Pid, ?REQ_NEWS_BULLETINS),
+    call(Pid, 1),
+    call(Pid, 1),
+    timer:sleep(5000),
+    call(Pid, ?REQ_MKT_DATA),
+    call(Pid, 6),
+    call(Pid, 3),
+    call(Pid, "CL"),
+    call(Pid, "FUT"),
+    call(Pid, "201006"),
+    call(Pid, "0.0000000"),
+    call(Pid, ""),
+    call(Pid, ""),
+    call(Pid, "NYMEX"),
+    call(Pid, ""),
+    call(Pid, "USD"),
+    call(Pid, ""),
+    call(Pid,"100,101,104,106,165,221,225").
+d26 71
+d109 3
+d113 2
+a114 2
+call(Pid, Command) ->
+    Pid ! {send, Command}.
+d147 1
+d157 1
+a157 1
+%% vim: set et ts=4 sw=4 ai invlist si cul nu:
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+a1 1
+%% $Id: template.erl,v 1.2 2010/03/24 19:59:22 bm119 Exp $
+d10 1
+a10 1
+-vsn("$Id: template.erl,v 1.2 2010/03/24 19:59:22 bm119 Exp $").
+a22 1
+    gen_tcp:send(Socket, ?CLIENT_VERSION),       % send ClientVersion
+d39 11
+a49 11
+    call(Pid, "CL\0"),
+    call(Pid, "FUT\0"),
+    call(Pid, "201006\0"),
+    call(Pid, "0.0000000\0"),
+    call(Pid, "\0"),
+    call(Pid, "\0"),
+    call(Pid, "NYMEX\0"),
+    call(Pid, "\0"),
+    call(Pid, "USD\0"),
+    call(Pid, "\0"),
+    call(Pid,"100,101,104,106,165,221,225\0").
+d105 1
+a105 1
+        _ -> V
+@

@@ -1,0 +1,119 @@
+head	1.2;
+access;
+symbols;
+locks
+	micro:1.2; strict;
+comment	@# @;
+
+
+1.2
+date	2010.04.27.18.24.25;	author micro;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2010.04.26.13.30.50;	author micro;	state Exp;
+branches;
+next	;
+
+
+desc
+@added accumulate function from Erlang Programming Exercises (ETS/DETS chapter).
+-primus
+@
+
+
+1.2
+log
+@not sure of changes.
+-primus
+@
+text
+@%% $Id: r.erl,v 1.1 2010/04/26 13:30:50 micro Exp $
+%% Fri Mar  5 18:31:35 GMT 2010 -primus
+%% Erlang code template - to be used for all modules
+
+-module(r).
+%% -import().
+-export([create_record/2, accumulate/1]).
+%% -compile(export_all).
+-vsn("$Id: r.erl,v 1.1 2010/04/26 13:30:50 micro Exp $").
+-author("R, Primus").
+-copyright("").
+-doc("").
+-purpose("").
+-include("instrument.hrl").
+
+create_record(File_In, File_Out) ->
+    case file:consult(File_In) of
+        {ok, List} ->
+            file:consult(File_In),
+            Records = parse_list(List, []),
+            case write_file(Records, File_Out) of
+                {File_Out, Error} ->
+                    {File_Out, Error};
+                _ -> ok
+            end;
+        Error ->
+            {File_In, Error}
+    end.
+
+parse_list([], L) -> L;
+parse_list([{Symb, Exch, TickSize, Mult}|T], Acc) -> 
+                    parse_list(T, [#instrument{symbol=Symb, exchange=Exch,
+                    ticksize=TickSize,
+                    multiplier=Mult}| Acc]).
+
+write_file(L, File_Out) ->
+    case file:open(File_Out, write) of
+        {ok, S} ->
+            lists:map(fun(X) -> io:format(S, "~p~n", [X]) end, L),
+            file:close(S);
+        Error ->
+            {File_Out, Error}
+    end.
+
+
+accumulate(L) ->
+    L1 = lists:usort(lists:reverse(L)),
+    L2 = [{X} || X <- L1],
+    lists:reverse(build(L2, [])).
+
+build([], L) -> L;
+
+build([{H}|[{H1}|T]], L) when H1-H == 1 -> 
+    build([{H,H1}|T], L);
+
+build([{H,H1}|[{H2}|T]], L) when H2-H1 == 1 -> 
+    build([{H,H2}|T], L);
+
+build([H|T], L) -> build(T, [H|L]).
+
+
+
+%% vim: set et ts=4 sw=4 ai invlist si cul nu:
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+a1 1
+%% $Id: template.erl,v 1.2 2010/03/24 19:59:22 bm119 Exp $
+d9 1
+a9 1
+-vsn("$Id: template.erl,v 1.2 2010/03/24 19:59:22 bm119 Exp $").
+d17 12
+a28 3
+    {ok, List} = file:consult(File_In),
+    Records = parse_list(List, []),
+    write_file(Records, File_Out).
+d37 7
+a43 3
+    {ok, S} = file:open(File_Out, write),
+    lists:map(fun(X) -> io:format(S, "~p~n", [X]) end, L),
+    file:close(S).
+@
