@@ -1,0 +1,10 @@
+[{release,"tws","1.0.0","5.9.1",
+          [{kernel,"2.15.1",
+                   "/home/rprimus/w/squiz/prog/erlang/tws-1.0.0/rel/tws-1.0.0/lib/kernel-2.15.1"},
+           {stdlib,"1.18.1",
+                   "/home/rprimus/w/squiz/prog/erlang/tws-1.0.0/rel/tws-1.0.0/lib/stdlib-1.18.1"},
+           {sasl,"2.2.1",
+                 "/home/rprimus/w/squiz/prog/erlang/tws-1.0.0/rel/tws-1.0.0/lib/sasl-2.2.1"},
+           {tws,"1.0.0",
+                "/home/rprimus/w/squiz/prog/erlang/tws-1.0.0/rel/tws-1.0.0/lib/tws-1.0.0"}],
+          permanent}].

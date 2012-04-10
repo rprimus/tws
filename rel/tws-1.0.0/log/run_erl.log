@@ -1,0 +1,8 @@
+run_erl [21341] Tue Apr 10 19:39:20 2012
+Args before exec of shell:
+run_erl [21341] Tue Apr 10 19:39:20 2012
+argv[0] = sh
+run_erl [21341] Tue Apr 10 19:39:20 2012
+argv[1] = -c
+run_erl [21341] Tue Apr 10 19:39:20 2012
+argv[2] = exec /home/rprimus/prog/erlang/tws-1.0.0/rel/tws-1.0.0/bin/dummy console \'\' 
