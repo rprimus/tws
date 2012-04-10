@@ -44,7 +44,7 @@
 %%%
 
 
--module(tws_app).
+-module(tws_sup).
 -vsn('1.0.0').
 -author("R Primus").
 -copyright("Copyright (c) © 2010, R Primus. All Rights Reserved").
@@ -64,7 +64,7 @@
 
 %% used for debugging
 
-start() ->
+start(_, _) ->
   case tws:start() of
     {ok, Pid} ->
       {ok, Pid};
