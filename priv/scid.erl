@@ -74,31 +74,31 @@
 ]).
 
 %% Records
--record(s_header{
+-record(s_header, {
   headerID = <<"SCID">>,
-  headerSize=<<0:16>>,
+  headerSize = <<0:16>>,
 
-  recordSize=<<0:16>>,
-  version<<0:8>>,
-  unused1=<<0:8>>,
+  recordSize = <<0:16>>,
+  version = <<0:8>>,
+  unused1 = <<0:8>>,
 
-  uTCStartIndex=<<0:16>>,
+  uTCStartIndex = <<0:16>>,
 
-  reserve=<<0:288>>
+  reserve = <<0:288>>
 }).
 
--record(s_intraday{
-  dateTime=<<0/float>>,;
+-record(s_intraday, {
+  dateTime = <<0/float>>,
 
-  open=<<0:32/float>>,
-  high=<<0:32/float>>,
-  low=<<0:32/float>>,
-  close=<<0:32/float>>,
+  open = <<0:32/float>>,
+  high = <<0:32/float>>,
+  low = <<0:32/float>>,
+  close = <<0:32/float>>,
 
-  numTrades=<<0:32>>,
-  totalVolume=<<0:32>>,
-  bidVolume=<<0:32>>,
-  askVolume=<<0:32>>
+  numTrades = <<0:32>>,
+  totalVolume = <<0:32>>,
+  bidVolume = <<0:32>>,
+  askVolume = <<0:32>>
 }).
 
 
