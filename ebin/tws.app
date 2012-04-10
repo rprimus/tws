@@ -1,6 +1,6 @@
 {application,tws,
              [{description,"IB TWS API client"},
-              {vsn,"31c51d8"},
+              {vsn,"1.0.0"},
               {registered,[tws]},
               {applications,[kernel,stdlib]},
               {mod,{tws_sup,[]}},
